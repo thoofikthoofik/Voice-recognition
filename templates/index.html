@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Command System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            flex: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .control-panel, .output-panel {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .control-panel h2, .output-panel h2 {
+            color: #4a5568;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .voice-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .mic-button {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: none;
+            font-size: 3rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .mic-button.listening {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            animation: pulse 2s infinite;
+            box-shadow: 0 0 20px rgba(255, 107, 107, 0.5);
+        }
+
+        .mic-button.idle {
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            color: white;
+            box-shadow: 0 4px 15px rgba(78, 205, 196, 0.3);
+        }
+
+        .mic-button.processing {
+            background: linear-gradient(45deg, #feca57, #ff9ff3);
+            color: white;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-indicator {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-indicator.listening {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+        }
+
+        .status-indicator.idle {
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            color: white;
+        }
+
+        .status-indicator.processing {
+            background: linear-gradient(45deg, #feca57, #ff9ff3);
+            color: white;
+        }
+
+        .status-indicator.error {
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .command-spacing {
+            background: rgba(52, 152, 219, 0.1);
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+            text-align: center;
+            color: #3498db;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .audio-tips {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .audio-tips h4 {
+            color: #4a5568;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .audio-tips ul {
+            list-style: none;
+            padding: 0;
+            font-size: 0.9rem;
+            color: #718096;
+        }
+
+        .audio-tips li {
+            padding: 3px 0;
+            position: relative;
+            padding-left: 20px;
+        }
+
+        .audio-tips li::before {
+            content: "💡";
+            position: absolute;
+            left: 0;
+        }
+
+        .accuracy-indicator {
+            display: none;
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .accuracy-high {
+            background: linear-gradient(45deg, #2ecc71, #27ae60);
+            color: white;
+        }
+
+        .accuracy-medium {
+            background: linear-gradient(45deg, #f39c12, #e67e22);
+            color: white;
+        }
+
+        .accuracy-low {
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .text-input-section {
+            border-top: 2px solid #e2e8f0;
+            padding-top: 20px;
+        }
+
+        .text-input-section h3 {
+            color: #4a5568;
+            margin-bottom: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .text-input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 25px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        .text-input:focus {
+            border-color: #667eea;
+        }
+
+        .send-button {
+            padding: 12px 20px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .send-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .output-area {
+            height: 400px;
+            overflow-y: auto;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 15px;
+            background: #f8fafc;
+            font-family: 'Courier New', monospace;
+            line-height: 1.5;
+        }
+
+        .command-entry {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            animation: slideIn 0.3s ease;
+        }
+
+        .command-entry.user {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            margin-left: 20px;
+        }
+
+        .command-entry.system {
+            background: #e2e8f0;
+            color: #4a5568;
+            margin-right: 20px;
+        }
+
+        .command-entry.error {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            margin-right: 20px;
+        }
+
+        .command-entry.success {
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            color: white;
+            margin-right: 20px;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .commands-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .command-category {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .command-category h3 {
+            color: #4a5568;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+
+        .command-list {
+            list-style: none;
+        }
+
+        .command-list li {
+            padding: 8px 0;
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .command-list li::before {
+            content: "🎤 ";
+            margin-right: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .mic-button {
+                width: 100px;
+                height: 100px;
+                font-size: 2.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-microphone"></i> Voice Command System</h1>
+            <p>Speak your commands or type them below</p>
+        </div>
+
+        <div class="main-content">
+            <div class="control-panel">
+                <h2><i class="fas fa-sliders-h"></i> Controls</h2>
+                
+                <div class="voice-controls">
+                    <button id="micButton" class="mic-button idle">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    
+                    <div id="statusIndicator" class="status-indicator idle">
+                        Ready to listen
+                    </div>
+
+                    <div id="accuracyIndicator" class="accuracy-indicator">
+                        <span id="accuracyText"></span>
+                    </div>
+
+                    <div id="commandSpacing" class="command-spacing">
+                        ⏳ Processing complete - Ready for next command in <span id="countdown"></span>s
+                    </div>
+                </div>
+
+                <div class="audio-tips">
+                    <h4><i class="fas fa-lightbulb"></i> Voice Accuracy Tips</h4>
+                    <ul>
+                        <li>Speak 6-12 inches from your microphone</li>
+                        <li>Speak clearly and at normal pace</li>
+                        <li>Minimize background noise</li>
+                        <li>Wait for "Listening..." before speaking</li>
+                        <li>Allow browser microphone permissions</li>
+                    </ul>
+                </div>
+
+                <div class="text-input-section">
+                    <h3><i class="fas fa-keyboard"></i> Manual Input</h3>
+                    <div class="input-group">
+                        <input type="text" id="textInput" class="text-input" placeholder="Type a command...">
+                        <button id="sendButton" class="send-button">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="output-panel">
+                <h2><i class="fas fa-terminal"></i> Output</h2>
+                <div id="outputArea" class="output-area">
+                    <div class="command-entry system">
+                        <strong>System:</strong> Voice Command System initialized. Click the microphone to start listening or type commands below.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="commands-grid">
+            <div class="command-category">
+                <h3><i class="fas fa-info-circle"></i> System Information</h3>
+                <ul class="command-list">
+                    <li>system info / about</li>
+                    <li>memory / ram</li>
+                    <li>cpu / processor</li>
+                    <li>disk / drive</li>
+                    <li>processes / tasks</li>
+                </ul>
+            </div>
+
+            <div class="command-category">
+                <h3><i class="fas fa-folder"></i> File Operations</h3>
+                <ul class="command-list">
+                    <li>list files</li>
+                    <li>date / time</li>
+                </ul>
+            </div>
+
+            <div class="command-category">
+                <h3><i class="fas fa-network-wired"></i> Network</h3>
+                <ul class="command-list">
+                    <li>ip / network</li>
+                    <li>ping google</li>
+                </ul>
+            </div>
+
+            <div class="command-category">
+                <h3><i class="fas fa-rocket"></i> Applications</h3>
+                <ul class="command-list">
+                    <li>open browser</li>
+                    <li>open notepad</li>
+                    <li>open calculator</li>
+                </ul>
+            </div>
+
+            <div class="command-category">
+                <h3><i class="fas fa-search"></i> Search & Media</h3>
+                <ul class="command-list">
+                    <li>search [query]</li>
+                    <li>search [song] song</li>
+                    <li>search [movie] movie</li>
+                </ul>
+            </div>
+
+            <div class="command-category">
+                <h3><i class="fas fa-cog"></i> System Control</h3>
+                <ul class="command-list">
+                    <li>volume up</li>
+                    <li>volume down</li>
+                    <li>clear / cls</li>
+                    <li>help / commands</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const micButton = document.getElementById('micButton');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const outputArea = document.getElementById('outputArea');
+        const textInput = document.getElementById('textInput');
+        const sendButton = document.getElementById('sendButton');
+
+        let isListening = false;
+
+        // Microphone button click handler
+        micButton.addEventListener('click', function() {
+            if (!isListening) {
+                startListening();
+            } else {
+                stopListening();
+            }
+        });
+
+        // Send button click handler
+        sendButton.addEventListener('click', function() {
+            sendTextCommand();
+        });
+
+        // Enter key handler for text input
+        textInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendTextCommand();
+            }
+        });
+
+        function startListening() {
+            isListening = true;
+            micButton.className = 'mic-button listening';
+            micButton.innerHTML = '<i class="fas fa-stop"></i>';
+            socket.emit('start_listening');
+        }
+
+        function stopListening() {
+            isListening = false;
+            micButton.className = 'mic-button idle';
+            micButton.innerHTML = '<i class="fas fa-microphone"></i>';
+            socket.emit('stop_listening');
+        }
+
+        function sendTextCommand() {
+            const command = textInput.value.trim();
+            if (command) {
+                addToOutput(`You: ${command}`, 'user');
+                socket.emit('execute_command', { command: command });
+                textInput.value = '';
+            }
+        }
+
+        function updateStatus(status, message) {
+            statusIndicator.className = `status-indicator ${status}`;
+            statusIndicator.textContent = message;
+            
+            if (status === 'processing') {
+                micButton.className = 'mic-button processing';
+                micButton.innerHTML = '<i class="fas fa-spinner"></i>';
+            } else if (status === 'listening') {
+                micButton.className = 'mic-button listening';
+                micButton.innerHTML = '<i class="fas fa-stop"></i>';
+            } else if (status === 'stopped' || status === 'error') {
+                isListening = false;
+                micButton.className = 'mic-button idle';
+                micButton.innerHTML = '<i class="fas fa-microphone"></i>';
+            }
+        }
+
+        function showAccuracyIndicator(confidence) {
+            const accuracyIndicator = document.getElementById('accuracyIndicator');
+            const accuracyText = document.getElementById('accuracyText');
+            
+            if (confidence >= 0.8) {
+                accuracyIndicator.className = 'accuracy-indicator accuracy-high';
+                accuracyText.textContent = `🎯 High Accuracy (${Math.round(confidence * 100)}%)`;
+            } else if (confidence >= 0.5) {
+                accuracyIndicator.className = 'accuracy-indicator accuracy-medium';
+                accuracyText.textContent = `⚠️ Medium Accuracy (${Math.round(confidence * 100)}%)`;
+            } else {
+                accuracyIndicator.className = 'accuracy-indicator accuracy-low';
+                accuracyText.textContent = `❌ Low Accuracy (${Math.round(confidence * 100)}%)`;
+            }
+            
+            accuracyIndicator.style.display = 'block';
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                accuracyIndicator.style.display = 'none';
+            }, 3000);
+        }
+
+        function showCommandSpacing() {
+            const commandSpacing = document.getElementById('commandSpacing');
+            const countdown = document.getElementById('countdown');
+            
+            commandSpacing.style.display = 'block';
+            
+            let timeLeft = 2;
+            countdown.textContent = timeLeft;
+            
+            const countdownInterval = setInterval(() => {
+                timeLeft--;
+                countdown.textContent = timeLeft;
+                
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    commandSpacing.style.display = 'none';
+                }
+            }, 1000);
+        }
+
+        function addToOutput(text, type = 'system') {
+            const entry = document.createElement('div');
+            entry.className = `command-entry ${type}`;
+            
+            if (type === 'user') {
+                entry.innerHTML = `<strong>You:</strong> ${text.replace('You: ', '')}`;
+            } else if (type === 'system') {
+                entry.innerHTML = `<strong>System:</strong> ${text}`;
+            } else if (type === 'error') {
+                entry.innerHTML = `<strong>Error:</strong> ${text}`;
+            } else if (type === 'success') {
+                entry.innerHTML = `<strong>Success:</strong> ${text}`;
+            }
+            
+            outputArea.appendChild(entry);
+            outputArea.scrollTop = outputArea.scrollHeight;
+        }
+
+        // Socket event handlers
+        socket.on('status_update', function(data) {
+            updateStatus(data.status, data.message);
+        });
+
+        socket.on('command_recognized', function(data) {
+            let displayText = `Recognized: "${data.command}"`;
+            
+            // Show confidence indicator if available
+            if (data.confidence !== null && data.confidence !== undefined) {
+                let confidence = data.confidence;
+                if (confidence > 1.0) {
+                    confidence = confidence / 100; // Convert percentage to decimal
+                }
+                showAccuracyIndicator(confidence);
+                displayText += ` (${Math.round(confidence * 100)}% confidence)`;
+            }
+            
+            addToOutput(displayText, 'user');
+        });
+
+        socket.on('command_result', function(data) {
+            let type = 'system';
+            if (data.type === 'error') {
+                type = 'error';
+            } else if (data.type === 'action' || data.type === 'search') {
+                type = 'success';
+            }
+            
+            if (data.clear) {
+                outputArea.innerHTML = '';
+                addToOutput('Screen cleared', 'success');
+            } else {
+                addToOutput(data.output, type);
+            }
+            
+            // Show command spacing countdown
+            showCommandSpacing();
+        });
+
+        // Auto-scroll output area
+        function autoScroll() {
+            outputArea.scrollTop = outputArea.scrollHeight;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            autoScroll();
+        });
+    </script>
+</body>
+</html> 
